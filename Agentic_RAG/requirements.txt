@@ -1,0 +1,14 @@
+openai
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langgraph
+langchain-experimental
+pypdf
+langchain-chroma
+faiss-cpu
+chromadb
+tavily-python
+python-dotenv
+sentence-transformers
