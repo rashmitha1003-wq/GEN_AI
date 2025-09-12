@@ -1,0 +1,12 @@
+python-dotenv
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain-chroma
+openai
+chromadb
+youtube-transcript-api
+yt-dlp
+pypdf
+streamlit
