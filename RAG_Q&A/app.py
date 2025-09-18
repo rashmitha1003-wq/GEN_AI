@@ -5,7 +5,7 @@ from main import get_transcript_from_url, load_document, build_vectorstore, ask_
 # collection_name = "rag_collection_new"
 
 st.set_page_config(page_title="YouTube/Doc RAG QA", layout="centered")
-st.title("📘 Upload and Ask")
+st.title("Upload and Ask")
 
 # Sidebar input
 st.sidebar.header("Upload Source")
@@ -38,11 +38,11 @@ elif source_type == "Document":
 
 # QA Section
 if "vectorstore" in st.session_state:
-    query = st.text_input("💬 Ask a question about your content:")
+    query = st.text_input("Ask a question about your content:")
     if query:
         with st.spinner("Thinking..."):
             answer = ask_question(st.session_state["vectorstore"], query)
-        st.markdown("### ✅ Answer")
+        st.markdown("###Answer")
         st.write(answer)
 else:
     st.info("⬅️ Please load a YouTube transcript or upload a document first.")
