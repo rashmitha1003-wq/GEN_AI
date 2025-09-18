@@ -8,6 +8,7 @@ Health Assistant is a Streamlit-based application that leverages LangChain and O
 - **Exercise Search**: Retrieve information from exercise-related documents.
 - **Tavily Search**: Perform external searches for additional information.
 - **Interactive UI**: Built with Streamlit for an easy-to-use interface.
+- Used hybrid-search and re-ranking.
 
 ## Prerequisites
 
