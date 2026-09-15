@@ -1,0 +1,14 @@
+streamlit
+langchain
+langchain-core
+langchain-groq
+pydantic
+langchain-community
+python-dotenv
+pypdf
+python-docx
+fastapi
+uvicorn
+requests
+python-multipart
+tenacity
