@@ -59,7 +59,8 @@ if st.button("Analyze"):
                 response = requests.post(
                     API_URL,
                     files=files,
-                    data=data
+                    data=data,
+                    timeout=120
                 )
 
                 if response.status_code == 200:
