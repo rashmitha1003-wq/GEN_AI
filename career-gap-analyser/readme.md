@@ -2,6 +2,11 @@
 
 An AI-powered application that analyzes a candidate's resume against a job description, identifies skill gaps, and generates a personalized learning roadmap.
 
+# 🚀 Live Demo
+**[Try it here](https://your-app-name.onrender.com)**
+
+> Hosted on a free tier, so the first load after inactivity can take up to a minute while the server wakes up. Please give it a moment.
+
 ## Overview
 
 Career Gap Analyzer helps job seekers understand how well their current skills align with a target job description.
