@@ -78,7 +78,7 @@ streamlit run app.py
 ```
 
 ## Docker
-
+The application is containerized to provide a consistent environment and a foundation for future deployment.
 Build and run the project with Docker:
 
 ```bash
