@@ -1,6 +1,8 @@
 #  QA System
 
-This project is a Retrieval-Augmented Generation (RAG) system that allows users to ask questions about content from YouTube videos or uploaded documents. The system uses OpenAI's GPT-4 model for answering questions based on the provided context.
+This project is a Retrieval-Augmented Generation (RAG) system that allows users to ask questions about content from YouTube videos or uploaded documents. 
+
+Ran an evaluation pipeline and improved the quality accordingly
 
 ## Features
 
@@ -65,8 +67,32 @@ The project uses the following Python libraries:
 
 ## Notes
 
-- Ensure you have a valid OpenAI API key to use the GPT-4 model.
+- Ensure you have a valid Groq API key.
 - The system stores vectorstore data in a directory for persistence.
+
+## RAG Evaluation
+
+- I evaluated the retrieval and generation quality of the RAG pipeline using RAGAS, and Langsmith for tracing and monitoring.
+
+Evaluation setup:
+ - dataset : 10 examples
+ - framework: RAGAS
+ - LLM: Groq openai/gpt-oss-120b
+ - Embeddings: sentence-transformers/all-MiniLM-L6-v2
+
+Final results: 
+| Metric | Score |
+|---|---:|
+| Context Precision | 0.7478 |
+| Context Recall | 0.9000 |
+| Faithfulness | 0.9267 |
+| Answer Relevancy | 0.7518 |
+
+initial score for retrieval: context precision was 0.5012 an context recall was 0.7042
+added hybrid retrieval and re-ranker to improve scoring.
+
+Limitations: 
+The eval uses a small manually curated testset of 10 questions. Further testing is needed to assess generalization and edge cases
 
 ## License
 

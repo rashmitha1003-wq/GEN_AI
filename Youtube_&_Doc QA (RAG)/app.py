@@ -1,5 +1,5 @@
 import streamlit as st
-from main import get_transcript_from_url, load_document, build_vectorstore, ask_question
+from main import get_transcript_from_url, load_document, build_vectorstore, ask_question, generate_video_insights
 
 # persist_directory = "vectorstore_data"
 # collection_name = "rag_collection_new"
@@ -18,10 +18,16 @@ if source_type == "YouTube URL":
     if st.sidebar.button("Load YouTube Transcript") and url:
         with st.spinner("Fetching transcript..."):
             text_data = get_transcript_from_url(url)
+
+            insights_text = generate_video_insights(text_data)
+            st.session_state["insights_text"] = insights_text
+
             unique_id = uuid.uuid4().hex[:6]
             persist_directory = f"vectorstore_data/{unique_id}"
             collection_name = f"rag_collection_{unique_id}"
+
             st.session_state["vectorstore"] = build_vectorstore(text_data, persist_directory, collection_name)
+
         st.success("Transcript loaded into vectorstore!")
 
 elif source_type == "Document":
@@ -35,14 +41,21 @@ elif source_type == "Document":
             st.session_state["vectorstore"] = build_vectorstore(text_data, persist_directory, collection_name)
         st.success("Document loaded into vectorstore!")
 
+if "insights_text" in st.session_state:
+    st.markdown("## 📌 Video / Document Insights")
+    st.write(st.session_state["insights_text"])
+
+
 
 # QA Section
 if "vectorstore" in st.session_state:
     query = st.text_input("Ask a question about your content:")
     if query:
         with st.spinner("Thinking..."):
-            answer = ask_question(st.session_state["vectorstore"], query)
-        st.markdown("###Answer")
-        st.write(answer)
+            result = ask_question(st.session_state["vectorstore"], query)
+            st.markdown("###Answer")
+            st.markdown(result["answer"])
 else:
     st.info("⬅️ Please load a YouTube transcript or upload a document first.")
+
+

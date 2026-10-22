@@ -10,3 +10,5 @@ youtube-transcript-api
 yt-dlp
 pypdf
 streamlit
+langchain-google-genai
+sentence-transformers

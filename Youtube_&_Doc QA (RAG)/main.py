@@ -5,14 +5,28 @@ from urllib.parse import urlparse, parse_qs
 
 import yt_dlp
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_groq import ChatGroq
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
+from sentence_transformers import CrossEncoder
 load_dotenv()
+
 # Initialize LLM + Embeddings
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+llm = ChatGroq(model="openai/gpt-oss-120b")
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+
+
+reranker = CrossEncoder(
+    "cross-encoder/ms-marco-MiniLM-L-6-v2"
+)
 
 # --- Utilities ---
 
@@ -36,6 +50,8 @@ def get_transcript_from_url(youtube_url: str) -> str:
             'skip_download': True,
             'outtmpl': f'{tmpdir}/{video_id}.%(ext)s',
             'quiet': True,
+            "sleep_interval": 2,
+            "max_sleep_interval": 5,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -48,15 +64,30 @@ def get_transcript_from_url(youtube_url: str) -> str:
         with open(json3_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        segments = data.get('events', [])
-        lines = []
-        for segment in segments:
-            if 'segs' in segment:
-                text = ''.join([s.get('utf8', '') for s in segment['segs']])
-                lines.append(text.strip())
-
+        segments = data.get('events', []) 
+        lines = [] 
+        for segment in segments: 
+            if 'segs' in segment: 
+                text = ''.join([s.get('utf8', '') for s in segment['segs']]) 
+                lines.append(text.strip()) 
         return ' '.join(lines)
 
+def generate_video_insights(text: str):
+    prompt = f""" 
+
+        You are a notes assistant.
+        Analyze the following video transcript and generate:
+
+        1. SUMMARY : write a very clear summary of the transcript. Keep it concise.
+
+        2. KEY INSIGHTS : Bullet points of the most important ideas. Make sure all the important info is covered.
+
+        3. TOPICS COVERED : list of topics mentioned in the transcript ONLY. Do not add any extra topics.
+
+        content:{text}
+    """
+    response = llm.invoke(prompt)
+    return response.content
 
 def load_document(uploaded_file) -> str:
     ext = os.path.splitext(uploaded_file.name)[-1].lower()
@@ -74,12 +105,9 @@ def load_document(uploaded_file) -> str:
     docs = loader.load()
     return " ".join([d.page_content for d in docs])
 
-
-def build_vectorstore(text: str, persist_directory: str, collection_name: str):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=100
-    )
+from langchain_classic.schema import Document
+def build_vectorstore(text, persist_directory: str, collection_name: str):
+    text_splitter = SemanticChunker(embeddings = embeddings, breakpoint_threshold_type="percentile")
     docs = text_splitter.create_documents([text])
 
     if not os.path.exists(persist_directory):
@@ -91,56 +119,159 @@ def build_vectorstore(text: str, persist_directory: str, collection_name: str):
         persist_directory=persist_directory,
         collection_name=collection_name
     )
-    return vectorstore
+
+    bm25 = BM25Retriever.from_documents(docs)
+    bm25.k = 7
+
+    vector_retriever = vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={"k": 7, "fetch_k": 20}
+    )
+
+    hybrid_retriever = EnsembleRetriever(
+        retrievers=[bm25, vector_retriever],
+        weights=[0.5, 0.5]
+    )
+
+    return hybrid_retriever
 
 
-def ask_question(vectorstore, query: str) -> str:
-    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
+def rerank_documents(query, documents, top_k=4):
+    """
+    query: user's question
+    documents: list of LangChain Document objects
+    top_k: number of reranked documents to return
+    """
+
+    if not documents:
+        return []
+
+    pairs = [
+        (query, doc.page_content)
+        for doc in documents
+    ]
+
+    scores = reranker.predict(pairs)
+
+    ranked_docs = sorted(
+        zip(documents, scores),
+        key=lambda item: item[1],
+        reverse=True
+    )
+
+    return [
+        doc
+        for doc, score in ranked_docs[:top_k]
+    ]
+
+
+# def ask_question(retriever, query: str):
+#     # retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 5})
+#     docs = retriever.invoke(query)
+
+#     print("\n==== RETRIEVED DOCS ====")
+#     for i, d in enumerate(docs):
+#         print(f"\nDoc {i+1}:")
+#         print(d.page_content)
+
+#     if not docs:
+#         return {
+#             "answer": "NO relevant data found.",
+#             "retrieved_contexts": []
+#         }
+
+#     context = "\n\n".join([d.page_content for d in docs])
+#     prompt = f"""
+#    You are a helpful assistant. Answer the question based ONLY on the provided context.
+
+# Context:
+# {context}
+
+# Question:
+# {query}
+
+
+#     STRICT INSTRUCTIONS:
+#     - Always answer questions that are relevant to the context.
+#     - Do not use outside knowledge.
+#     - If no relevant information is found in the context, reply: "NO relevant data found".
+#     - If the question is unrelated to the context, reply: "I can only answer questions related to the provided context".
+#     - Eliminate redundancy and keep responses precise.
+
+#     Question: {query}
+#     Answer:
+#     """
+#     response = llm.invoke(prompt)
+#     answer = response.content
+
+
+#     return {
+#         "answer": answer,
+#         "retrieved_contexts": docs
+#     }
+
+
+
+def ask_question(retriever, query: str):
+    # Step 1: Retrieve candidate chunks using your existing MMR retriever
     docs = retriever.invoke(query)
 
+    print("\n==== ORIGINAL RETRIEVED DOCS ====")
+    for i, doc in enumerate(docs, start=1):
+        print(f"\nDoc {i}:")
+        print(doc.page_content)
+
     if not docs:
-        return "NO relevant data found."
+        return {
+            "answer": "NO relevant data found.",
+            "retrieved_contexts": []
+        }
 
-    context = "\n\n".join([d.page_content for d in docs])
+    # Step 2: Rerank the retrieved chunks
+    reranked_docs = rerank_documents(
+        query=query,
+        documents=docs,
+        top_k=5
+    )
 
+    print("\n==== RERANKED DOCS ====")
+    for i, doc in enumerate(reranked_docs, start=1):
+        print(f"\nDoc {i}:")
+        print(doc.page_content)
+
+    # Step 3: Build context using ONLY the reranked chunks
+    context = "\n\n".join(
+        doc.page_content for doc in reranked_docs
+    )
+
+    # Step 4: Generate the answer
     prompt = f"""
-   You are a helpful assistant. Answer the question based ONLY on the provided context:
-   {context}
+You are a helpful assistant. Answer the question based ONLY
+on the provided context.
 
-    Follow these response formatting rules based on the keywords in the user's query:
+Context:
+{context}
 
-    1. SUMMARY (keywords: "summary", "brief", "in short", "summarize"):
-    - Provide a concise summary with only the most important insights.
-    - Use bullet points where appropriate.
-    - Avoid unnecessary details.
+Question:
+{query}
 
-    2. QUESTION-ANSWER (direct questions):
-    - Provide clear, direct, and complete answers.
-    - Keep responses concise and relevant.
+STRICT INSTRUCTIONS:
+- Answer using only information from the context.
+- If the context does not contain the answer, reply:
+  "NO relevant data found".
+- If the question is unrelated to the provided material, reply:
+  "I can only answer questions related to the provided context".
+- Keep the response precise and avoid redundancy.
 
-    3. ELABORATION (keywords: "explain", "elaborate", "deep dive into"):
-    - Provide detailed and comprehensive explanations.
-    - Include examples or data from the context if available.
-    - Do not invent or add external information.
+Answer:
+"""
 
-    4. ANALYSIS (keywords: "analyze", "examine", "assess", "draw insights"):
-    - Provide a structured analysis that covers:
-        - Current situation
-        - Key factors
-        - Implications
-        - Conclusion
-
-    - If the user asks what the video is about, provide a jist in about 3-4 sentences.
-
-    STRICT INSTRUCTIONS:
-    - Always answer using ONLY the provided context.
-    - If no relevant information is found in the context, reply: "NO relevant data found".
-    - Do not use outside knowledge or guesswork.
-    - If the question is unrelated to the context, reply: "I can only answer questions related to the provided context".
-    - Eliminate redundancy and keep responses precise.
-
-    Question: {query}
-    Answer:
-    """
     response = llm.invoke(prompt)
-    return response.content
+
+    return {
+        "answer": response.content,
+        "retrieved_contexts": reranked_docs
+    }
+
+
+
